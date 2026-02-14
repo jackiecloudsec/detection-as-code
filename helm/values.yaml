@@ -1,0 +1,29 @@
+# Default values for detection-engine.
+# Override with -f values-local.yaml for minikube.
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/jackiecloudsec/detection-as-code/detection-engine
+  tag: latest
+  pullPolicy: IfNotPresent
+
+loki:
+  # Full URL to Loki (e.g. in-cluster or external)
+  url: http://loki-stack-loki.monitoring.svc.cluster.local:3100
+
+resources:
+  requests:
+    memory: "64Mi"
+    cpu: "50m"
+  limits:
+    memory: "128Mi"
+    cpu: "200m"
+
+# Optional: extra env vars for the engine
+extraEnv: []
+#  - name: LOG_LEVEL
+#    value: "DEBUG"
+
+# Namespace to install into (empty = release namespace)
+namespace: ""

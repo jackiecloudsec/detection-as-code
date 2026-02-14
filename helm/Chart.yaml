@@ -1,0 +1,9 @@
+apiVersion: v2
+name: detection-engine
+description: Detection-as-code engine; queries Loki and runs detection rules.
+type: application
+version: 0.1.0
+appVersion: "1"
+maintainers:
+  - name: jackiecloudsec
+    url: https://github.com/jackiecloudsec

@@ -1,0 +1,5 @@
+[
+  {"source_ip": "10.0.0.1", "failure_count": 3, "msg": "authentication failure"},
+  {"source_ip": "10.0.0.2", "failure_count": 7, "msg": "authentication failure"},
+  {"source_ip": "10.0.0.3", "unique_ports": 15, "msg": "connection"}
+]

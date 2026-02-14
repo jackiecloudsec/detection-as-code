@@ -1,0 +1,10 @@
+Detection engine is installed. It will query Loki and run detection rules in a loop.
+
+  Image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+  Loki:  {{ .Values.loki.url }}
+
+To watch logs:
+  kubectl logs -f deployment/detection-engine
+
+To upgrade after pushing a new image:
+  helm upgrade detection-engine . -f values-local.yaml

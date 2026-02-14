@@ -1,0 +1,10 @@
+# Local minikube overrides
+# Use after: helm install detection-engine ./helm -f helm/values-local.yaml
+
+loki:
+  url: http://loki-stack-loki.monitoring.svc.cluster.local:3100
+
+image:
+  repository: ghcr.io/jackiecloudsec/detection-as-code/detection-engine
+  tag: latest
+  pullPolicy: Always
