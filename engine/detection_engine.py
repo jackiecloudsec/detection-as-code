@@ -5,13 +5,14 @@ import logging
 import httpx
 from engine.log_parser import parse_log_line
 from engine.alert_manager import fire_alert
-from detections.auth import brute_force, impossible_travel
+from detections.auth import brute_force, failed_login, impossible_travel
 from detections.network import port_scan
 
 LOKI_URL = os.environ.get("LOKI_URL", "http://loki:3100")
 
 DETECTIONS = [
     brute_force,
+    failed_login,
     impossible_travel,
     port_scan,
 ]

@@ -15,6 +15,10 @@ spec:
       labels:
         {{- include "detection-engine.selectorLabels" . | nindent 8 }}
     spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: detection-engine
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
