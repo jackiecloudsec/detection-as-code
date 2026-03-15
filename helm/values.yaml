@@ -1,5 +1,4 @@
 # Default values for detection-engine.
-# Override with -f values-local.yaml for minikube.
 
 replicaCount: 1
 
@@ -13,8 +12,19 @@ imagePullSecrets:
   - name: ghcr-pull-secret
 
 loki:
-  # Full URL to Loki (e.g. in-cluster or external)
-  url: http://loki-stack-loki.monitoring.svc.cluster.local:3100
+  url: http://loki.monitoring.svc:3100
+
+alertmanager:
+  url: http://alertmanager.monitoring.svc:9093/api/v1/alerts
+
+engine:
+  pollInterval: 60
+  lookbackMinutes: 5
+  logLevel: INFO
+
+# Slack webhook (optional — leave empty to disable)
+slack:
+  webhookUrl: ""
 
 resources:
   requests:
@@ -24,10 +34,5 @@ resources:
     memory: "128Mi"
     cpu: "200m"
 
-# Optional: extra env vars for the engine
 extraEnv: []
-#  - name: LOG_LEVEL
-#    value: "DEBUG"
-
-# Namespace to install into (empty = release namespace)
 namespace: ""

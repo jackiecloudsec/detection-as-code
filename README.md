@@ -1,80 +1,101 @@
-# Detection as Code
+# detection-as-code
 
-Python detection engine that queries Loki for logs, runs detection functions, and fires alerts. Designed to run on minikube alongside Grafana + Loki stack.
+Kubernetes-native detection engine that auto-discovers and runs security detection modules against Loki log streams. Fires alerts to Alertmanager and Slack.
 
-## Stack
-
-- **Loki** — log aggregation
-- **Promtail** — log shipping to Loki
-- **Grafana** — dashboards and alerting
-- **Detection engine** — runs detections against Loki and fires alerts
-
-## Local setup (minikube)
-
-1. Start minikube and install Loki stack:
-
-   ```bash
-   minikube start --driver=docker --cpus=4 --memory=8g
-   helm repo add grafana https://grafana.github.io/helm-charts
-   helm repo update
-   helm install loki-stack grafana/loki-stack \
-     --namespace monitoring \
-     --create-namespace \
-     --set grafana.enabled=true \
-     --set promtail.enabled=true \
-     --set loki.enabled=true
-   ```
-
-2. Get Grafana password and port-forward:
-
-   ```bash
-   kubectl get secret --namespace monitoring loki-stack-grafana \
-     -o jsonpath="{.data.admin-password}" | base64 --decode
-   kubectl port-forward --namespace monitoring service/loki-stack-grafana 3000:80
-   ```
-
-   Open http://localhost:3000
-
-3. Deploy the detection engine (after building and pushing the image):
-
-   **Option A — Helm (recommended):**
-   ```bash
-   helm install detection-engine ./helm -f helm/values-local.yaml --namespace default --create-namespace
-   # Upgrade after new image builds:
-   helm upgrade detection-engine ./helm -f helm/values-local.yaml
-   ```
-
-   **Option B — Raw manifests:**
-   ```bash
-   kubectl apply -f k8s/configmap.yaml
-   kubectl apply -f k8s/detection-engine-deployment.yaml
-   ```
-
-## Project structure
+## Architecture
 
 ```
-detection-as-code/
-├── detections/        (expand here: add modules and register in engine)
-│   ├── auth/          (brute_force, impossible_travel)
-│   └── network/       (port_scan)
-├── engine/            (Loki client, parser, alert manager)
-├── k8s/               (Deployment, ConfigMap)
-├── helm/              (Chart + values; use for deploy)
-├── tests/
-└── .github/workflows/ (test + deploy)
+CloudTrail → Promtail/Fluentd → Loki
+                                  ↓
+                         Detection Engine (K8s Deployment)
+                         Auto-discovers 60+ modules
+                         Polls Loki every 60s
+                                  ↓
+                         Alertmanager → Slack / PagerDuty / Email
 ```
+
+## How it works
+
+1. **cloud-sec-blog** scrapes threat feeds, enriches with CloudTrail events, and syncs detection modules here via GitHub Actions
+2. **This repo** holds the detection modules (`detections/`) and the engine (`engine/`) that runs them
+3. On every push, CI builds a Docker image → pushes to GHCR → K8s pulls the latest image
+
+## Detection modules
+
+Each module implements a standard interface:
+
+```python
+def logql_query() -> str:        # LogQL query for Loki
+def detect(event: dict) -> bool: # Does this event match?
+def title(event: dict) -> str:   # Alert title
+def severity(event: dict) -> str: # critical/high/medium/low
+def runbook(event: dict) -> str:  # Remediation steps
+def metadata() -> dict:           # Module metadata
+```
+
+Modules are organized by category:
+
+```
+detections/
+├── auth/          # IAM, credential, login detections
+├── network/       # VPC, security group, network detections
+├── data/          # S3, KMS, data access detections
+└── cloudtrail/    # CloudTrail-specific event detections
+```
+
+## Quick start
+
+### Sandbox (local testing)
+
+```bash
+# Spin up a kind cluster with Loki + Alertmanager + engine
+./sandbox/setup.sh
+
+# Inject test CloudTrail events
+kubectl port-forward -n monitoring svc/loki 3100:3100 &
+python sandbox/inject_cloudtrail.py --count 50
+
+# Watch detections fire
+kubectl logs -n detections -l app=detection-engine -f
+```
+
+### Production (Helm)
+
+```bash
+helm upgrade --install detection-engine ./helm \
+  --set loki.url=http://your-loki:3100 \
+  --set alertmanager.url=http://your-alertmanager:9093/api/v1/alerts \
+  --set image.tag=latest
+```
+
+### Manual K8s deploy
+
+```bash
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/detection-engine-deployment.yaml
+```
+
+## Configuration
+
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `LOKI_URL` | `http://loki:3100` | Loki query endpoint |
+| `ALERTMANAGER_URL` | `http://alertmanager:9093/api/v1/alerts` | Alertmanager push endpoint |
+| `SLACK_WEBHOOK_URL` | (empty) | Slack webhook for alerts |
+| `POLL_INTERVAL` | `60` | Seconds between detection cycles |
+| `LOOKBACK_MINUTES` | `5` | How far back to query Loki |
+| `LOG_LEVEL` | `INFO` | Logging level |
+
+## Connected repos
+
+| Repo | Role |
+|------|------|
+| [cloud-sec-blog](https://github.com/jackiecloudsec/cloud-sec-blog) | Threat intel pipeline + web UI. Generates detection modules and syncs them here. |
+| **detection-as-code** (this repo) | Detection module library + K8s engine runtime. |
 
 ## Development
 
-- Install: `pip install -r requirements.txt`
-- Run tests: `PYTHONPATH=. pytest tests/ -v`
-- Run engine locally (needs Loki): `LOKI_URL=http://localhost:3100 PYTHONPATH=. python -m engine.detection_engine`
-
-## CI/CD
-
-- Push to `main` runs tests and builds/pushes the Docker image to `ghcr.io/jackiecloudsec/detection-as-code/detection-engine`.
-- Deploy with Helm: `helm upgrade --install detection-engine ./helm -f helm/values-local.yaml`.
-
-## Expanding detection rules
-
-Add new detection modules under `detections/` (e.g. `detections/endpoint/`, `detections/cloud/`). Each module should expose a detection object with: `logql_query()`, `detect(event)`, `title(event)`, `severity(event)`, `runbook(event)`. Register it in `engine/detection_engine.py` by appending to the `DETECTIONS` list. Add unit tests under `tests/` and run `PYTHONPATH=. pytest tests/ -v`.
+```bash
+pip install -r requirements.txt pytest pyyaml
+PYTHONPATH=. pytest tests/ -v
+```
