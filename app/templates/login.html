@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Admin Login{% endblock %}
+
+{% block content %}
+<section class="section" style="max-width: 400px; margin: 4rem auto;">
+    <h2 class="section-title">Admin Login</h2>
+    {% if request.query_params.get('error') %}
+    <p style="color: var(--red); margin-bottom: 1rem;">Invalid password.</p>
+    {% endif %}
+    <form method="post" action="/login" class="form">
+        <label class="form-label">Password</label>
+        <input type="password" name="password" class="form-input" autofocus required>
+        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">Login</button>
+    </form>
+</section>
+{% endblock %}

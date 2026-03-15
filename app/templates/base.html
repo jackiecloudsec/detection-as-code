@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Cloud Security Detection Platform{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <nav class="nav">
+        <div class="nav-inner">
+            <a href="/" class="nav-brand">
+                <span class="nav-logo">&#9041;</span>
+                <span>CloudSec<span class="accent">DaC</span></span>
+            </a>
+            <div class="nav-links">
+                <a href="/" class="nav-link {% if active == 'home' %}active{% endif %}">Home</a>
+                <a href="/blog" class="nav-link {% if active == 'blog' %}active{% endif %}">Blog</a>
+                <a href="/workflow" class="nav-link {% if active == 'workflow' %}active{% endif %}">Workflow</a>
+                <a href="/dashboards" class="nav-link {% if active == 'dashboards' %}active{% endif %}">Dashboards</a>
+                {% if is_admin %}
+                <a href="/logout" class="nav-link nav-link-admin">Logout</a>
+                {% else %}
+                <a href="/login" class="nav-link nav-link-dim">Admin</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+    <main class="main">
+        {% block content %}{% endblock %}
+    </main>
+    <footer class="footer">
+        <div class="footer-inner">
+            <span>&copy; 2026 Jackie Wade &mdash; Cloud Security Detection Platform</span>
+            <span class="footer-links">
+                <a href="https://github.com/jackiecloudsec" target="_blank">GitHub</a>
+                <a href="https://linkedin.com/in/opwade" target="_blank">LinkedIn</a>
+            </span>
+        </div>
+    </footer>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,401 @@
+{% extends "base.html" %}
+{% set active = "dashboards" %}
+{% block title %}Dashboards — Cloud Security Detection Platform{% endblock %}
+
+{% block content %}
+<section class="section">
+    <h2 class="section-title">Threat Intelligence &rarr; Detection Analytics</h2>
+    <p class="section-desc">Real-time analysis of the detection pipeline: what threats are being converted into detections, what log sources they cover, and sandbox validation results.</p>
+</section>
+
+<!-- Top-level KPIs -->
+<section class="section kpi-section">
+    <div class="kpi-grid">
+        <div class="kpi-card kpi-blue">
+            <div class="kpi-value" id="kpi-total">--</div>
+            <div class="kpi-label">Total Detections</div>
+        </div>
+        <div class="kpi-card kpi-green">
+            <div class="kpi-value" id="kpi-passed">--</div>
+            <div class="kpi-label">Sandbox Passed</div>
+        </div>
+        <div class="kpi-card kpi-yellow">
+            <div class="kpi-value" id="kpi-review">--</div>
+            <div class="kpi-label">Needs Review</div>
+        </div>
+        <div class="kpi-card kpi-purple">
+            <div class="kpi-value" id="kpi-events">--</div>
+            <div class="kpi-label">CloudTrail Events Covered</div>
+        </div>
+        <div class="kpi-card kpi-red">
+            <div class="kpi-value" id="kpi-critical">--</div>
+            <div class="kpi-label">Critical/High Severity</div>
+        </div>
+        <div class="kpi-card kpi-teal">
+            <div class="kpi-value" id="kpi-precision">--</div>
+            <div class="kpi-label">Avg Precision</div>
+        </div>
+    </div>
+</section>
+
+<!-- Charts row 1 -->
+<section class="section">
+    <div class="chart-grid-2">
+        <div class="chart-card">
+            <h3 class="chart-title">Detections by Intel Source</h3>
+            <div class="chart-wrap"><canvas id="chart-sources"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <h3 class="chart-title">Detections by Category</h3>
+            <div class="chart-wrap"><canvas id="chart-categories"></canvas></div>
+        </div>
+    </div>
+</section>
+
+<!-- Charts row 2 -->
+<section class="section">
+    <div class="chart-grid-2">
+        <div class="chart-card">
+            <h3 class="chart-title">Severity Distribution</h3>
+            <div class="chart-wrap"><canvas id="chart-severity"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <h3 class="chart-title">Top CloudTrail Events Covered</h3>
+            <div class="chart-wrap chart-wrap-tall"><canvas id="chart-events"></canvas></div>
+        </div>
+    </div>
+</section>
+
+<!-- Sandbox Results Chart -->
+<section class="section">
+    <div class="chart-card chart-full">
+        <h3 class="chart-title">Sandbox Validation: Precision by Detection</h3>
+        <div class="chart-wrap chart-wrap-xl"><canvas id="chart-precision"></canvas></div>
+    </div>
+</section>
+
+<!-- Interactive Detection Explorer -->
+<section class="section">
+    <div class="chart-card chart-full">
+        <h3 class="chart-title">Detection Explorer</h3>
+        <p class="chart-subtitle">Filter by source, category, or severity to see which detections cover which threats and what logs they match on.</p>
+        <div class="explorer-controls">
+            <select id="exp-source" class="form-select">
+                <option value="">All Sources</option>
+                <option value="cisa">CISA KEV</option>
+                <option value="reddit">Reddit</option>
+                <option value="rss">RSS Feeds</option>
+                <option value="nvd">NVD</option>
+                <option value="manual">Manual</option>
+            </select>
+            <select id="exp-category" class="form-select">
+                <option value="">All Categories</option>
+                <option value="auth">Auth</option>
+                <option value="network">Network</option>
+                <option value="data">Data</option>
+                <option value="cloudtrail">CloudTrail</option>
+            </select>
+            <select id="exp-severity" class="form-select">
+                <option value="">All Severities</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+                <option value="info">Info</option>
+            </select>
+            <input type="text" id="exp-search" class="form-input" placeholder="Search detections...">
+        </div>
+        <div class="explorer-stats" id="explorer-stats"></div>
+        <div class="explorer-table-wrap">
+            <table class="explorer-table" id="explorer-table">
+                <thead>
+                    <tr>
+                        <th>Detection</th>
+                        <th>Source</th>
+                        <th>Category</th>
+                        <th>Severity</th>
+                        <th>CloudTrail Events</th>
+                        <th>Sandbox</th>
+                        <th>Precision</th>
+                        <th>Sample Log</th>
+                    </tr>
+                </thead>
+                <tbody id="explorer-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<!-- Log Viewer Modal -->
+<div class="modal-overlay" id="log-modal" style="display:none" onclick="closeLogModal(event)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <h3 id="modal-title">Sample Log</h3>
+            <button class="modal-close" onclick="closeLogModal()">&times;</button>
+        </div>
+        <pre class="code-block code-sm" id="modal-log"></pre>
+        <div class="modal-footer">
+            <button class="btn btn-outline btn-sm" onclick="copyModalLog()">Copy</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const COLORS = {
+    blue: '#3b82f6', green: '#10b981', yellow: '#f59e0b', red: '#ef4444',
+    purple: '#8b5cf6', teal: '#14b8a6', orange: '#f97316', pink: '#ec4899',
+    indigo: '#6366f1', cyan: '#06b6d4',
+};
+const SEV_COLORS = { critical: '#ef4444', high: '#f97316', medium: '#f59e0b', low: '#3b82f6', info: '#6b7280' };
+const CAT_COLORS = { auth: '#8b5cf6', network: '#3b82f6', data: '#10b981', cloudtrail: '#f59e0b' };
+const SRC_COLORS = { cisa: '#ef4444', reddit: '#f97316', rss: '#3b82f6', nvd: '#8b5cf6', manual: '#10b981' };
+
+let statsData = null;
+let sandboxData = null;
+let allDetections = {{ detections | tojson }};
+
+Chart.defaults.color = '#94a3b8';
+Chart.defaults.borderColor = 'rgba(148, 163, 184, 0.1)';
+Chart.defaults.font.family = "'Inter', -apple-system, sans-serif";
+
+Promise.all([
+    fetch('/api/stats').then(r => r.json()),
+    fetch('/api/sandbox/results').then(r => r.json()),
+]).then(([stats, sandbox]) => {
+    statsData = stats;
+    sandboxData = sandbox;
+    renderKPIs();
+    renderCharts();
+    renderExplorer();
+});
+
+function renderKPIs() {
+    document.getElementById('kpi-total').textContent = statsData.total_detections;
+    let passed = sandboxData.filter(r => r.status === 'pass').length;
+    let review = sandboxData.filter(r => r.status === 'review').length;
+    document.getElementById('kpi-passed').textContent = passed;
+    document.getElementById('kpi-review').textContent = review;
+    document.getElementById('kpi-events').textContent = Object.keys(statsData.top_cloudtrail_events).length;
+    let critHigh = (statsData.severities.critical || 0) + (statsData.severities.high || 0);
+    document.getElementById('kpi-critical').textContent = critHigh;
+    let avgPrec = sandboxData.reduce((s, r) => s + r.precision, 0) / sandboxData.length;
+    document.getElementById('kpi-precision').textContent = avgPrec.toFixed(2);
+}
+
+function renderCharts() {
+    // Sources donut
+    new Chart(document.getElementById('chart-sources'), {
+        type: 'doughnut',
+        data: {
+            labels: Object.keys(statsData.sources).map(s => s.toUpperCase()),
+            datasets: [{
+                data: Object.values(statsData.sources),
+                backgroundColor: Object.keys(statsData.sources).map(s => SRC_COLORS[s]),
+                borderWidth: 0,
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { padding: 15, usePointStyle: true } },
+            },
+            cutout: '60%',
+        }
+    });
+
+    // Categories donut
+    new Chart(document.getElementById('chart-categories'), {
+        type: 'doughnut',
+        data: {
+            labels: Object.keys(statsData.categories).map(c => c.charAt(0).toUpperCase() + c.slice(1)),
+            datasets: [{
+                data: Object.values(statsData.categories),
+                backgroundColor: Object.keys(statsData.categories).map(c => CAT_COLORS[c]),
+                borderWidth: 0,
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { padding: 15, usePointStyle: true } },
+            },
+            cutout: '60%',
+        }
+    });
+
+    // Severity bar
+    let sevKeys = ['critical', 'high', 'medium', 'low', 'info'];
+    new Chart(document.getElementById('chart-severity'), {
+        type: 'bar',
+        data: {
+            labels: sevKeys.map(s => s.charAt(0).toUpperCase() + s.slice(1)),
+            datasets: [{
+                data: sevKeys.map(s => statsData.severities[s] || 0),
+                backgroundColor: sevKeys.map(s => SEV_COLORS[s]),
+                borderRadius: 6,
+                barThickness: 40,
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, grid: { color: 'rgba(148,163,184,0.08)' } },
+                x: { grid: { display: false } },
+            },
+        }
+    });
+
+    // Top CloudTrail events horizontal bar
+    let eventEntries = Object.entries(statsData.top_cloudtrail_events).slice(0, 15);
+    new Chart(document.getElementById('chart-events'), {
+        type: 'bar',
+        data: {
+            labels: eventEntries.map(e => e[0]),
+            datasets: [{
+                data: eventEntries.map(e => e[1]),
+                backgroundColor: COLORS.blue,
+                borderRadius: 4,
+                barThickness: 18,
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { beginAtZero: true, grid: { color: 'rgba(148,163,184,0.08)' } },
+                y: { grid: { display: false }, ticks: { font: { size: 11 } } },
+            },
+        }
+    });
+
+    // Precision scatter
+    let precData = sandboxData.map((r, i) => ({
+        x: r.events_tested,
+        y: r.precision,
+        r: Math.max(4, r.true_positives),
+        label: r.name,
+        status: r.status,
+    }));
+    new Chart(document.getElementById('chart-precision'), {
+        type: 'bubble',
+        data: {
+            datasets: [{
+                label: 'Pass',
+                data: precData.filter(d => d.status === 'pass'),
+                backgroundColor: 'rgba(16, 185, 129, 0.6)',
+                borderColor: '#10b981',
+                borderWidth: 1,
+            }, {
+                label: 'Review',
+                data: precData.filter(d => d.status === 'review'),
+                backgroundColor: 'rgba(245, 158, 11, 0.6)',
+                borderColor: '#f59e0b',
+                borderWidth: 1,
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { usePointStyle: true } },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => {
+                            let d = ctx.raw;
+                            return `${d.label}: precision=${d.y}, events=${d.x}, TP=${d.r}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: { title: { display: true, text: 'Events Tested' }, grid: { color: 'rgba(148,163,184,0.08)' } },
+                y: { title: { display: true, text: 'Precision' }, min: 0, max: 1.05, grid: { color: 'rgba(148,163,184,0.08)' } },
+            },
+        }
+    });
+}
+
+function getSource(module) {
+    if (module.startsWith('cisa_')) return 'cisa';
+    if (module.startsWith('reddit_')) return 'reddit';
+    if (module.startsWith('rss_')) return 'rss';
+    if (module.startsWith('nvd_')) return 'nvd';
+    return 'manual';
+}
+
+function renderExplorer() {
+    let tbody = document.getElementById('explorer-tbody');
+    updateExplorerTable();
+
+    ['exp-source', 'exp-category', 'exp-severity'].forEach(id => {
+        document.getElementById(id).addEventListener('change', updateExplorerTable);
+    });
+    document.getElementById('exp-search').addEventListener('input', updateExplorerTable);
+}
+
+function updateExplorerTable() {
+    let source = document.getElementById('exp-source').value;
+    let category = document.getElementById('exp-category').value;
+    let severity = document.getElementById('exp-severity').value;
+    let search = document.getElementById('exp-search').value.toLowerCase();
+
+    let filtered = sandboxData.filter(r => {
+        let src = getSource(r.module);
+        if (source && src !== source) return false;
+        if (category && r.category !== category) return false;
+        if (severity && r.severity !== severity) return false;
+        if (search && !r.name.toLowerCase().includes(search) && !r.module.toLowerCase().includes(search)) return false;
+        return true;
+    });
+
+    // Stats
+    let stats = document.getElementById('explorer-stats');
+    let avgPrec = filtered.length ? (filtered.reduce((s,r) => s + r.precision, 0) / filtered.length).toFixed(3) : '0';
+    let totalTP = filtered.reduce((s,r) => s + r.true_positives, 0);
+    let totalFP = filtered.reduce((s,r) => s + r.false_positives, 0);
+    let allEvts = new Set();
+    filtered.forEach(r => r.cloudtrail_events_matched.forEach(e => allEvts.add(e)));
+    stats.innerHTML = `
+        <span class="exp-stat"><strong>${filtered.length}</strong> detections</span>
+        <span class="exp-stat"><strong>${totalTP}</strong> true positives</span>
+        <span class="exp-stat"><strong>${totalFP}</strong> false positives</span>
+        <span class="exp-stat">Avg precision: <strong>${avgPrec}</strong></span>
+        <span class="exp-stat"><strong>${allEvts.size}</strong> unique CloudTrail events</span>
+    `;
+
+    // Table
+    let tbody = document.getElementById('explorer-tbody');
+    tbody.innerHTML = filtered.map(r => `
+        <tr>
+            <td class="td-name">${r.name.substring(0, 60)}</td>
+            <td><span class="src-badge src-${getSource(r.module)}">${getSource(r.module)}</span></td>
+            <td><span class="det-category cat-${r.category}">${r.category}</span></td>
+            <td><span class="det-severity sev-${r.severity}">${r.severity}</span></td>
+            <td class="td-events">${r.cloudtrail_events_matched.map(e => `<span class="event-tag-sm">${e}</span>`).join('')}</td>
+            <td><span class="sb-status-sm sb-${r.status}">${r.status}</span></td>
+            <td class="td-precision">${r.precision}</td>
+            <td><button class="btn btn-outline btn-xs" onclick='showLog(${JSON.stringify(r.sample_log).replace(/'/g, "&#39;")}, "${r.name.replace(/"/g, '')}")'>View</button></td>
+        </tr>
+    `).join('');
+}
+
+function showLog(log, name) {
+    document.getElementById('log-modal').style.display = 'flex';
+    document.getElementById('modal-title').textContent = 'Sample Log: ' + name;
+    document.getElementById('modal-log').textContent = JSON.stringify(log, null, 2);
+}
+
+function closeLogModal(event) {
+    if (!event || event.target.id === 'log-modal') {
+        document.getElementById('log-modal').style.display = 'none';
+    }
+}
+
+function copyModalLog() {
+    navigator.clipboard.writeText(document.getElementById('modal-log').textContent);
+}
+</script>
+{% endblock %}

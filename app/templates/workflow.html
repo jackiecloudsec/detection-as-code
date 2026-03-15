@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+{% set active = "workflow" %}
+{% block title %}Detection Workflow — Cloud Security Detection Platform{% endblock %}
+
+{% block content %}
+<section class="section">
+    <h2 class="section-title">Detection Workflow Pipeline</h2>
+    <p class="section-desc">
+        {{ total }} detections across {{ categories|length }} categories.
+        Select a detection to view sandbox results and export SIEM templates.
+    </p>
+
+    <!-- Pipeline Status -->
+    <div class="workflow-pipeline">
+        <div class="wf-stage wf-stage-active">
+            <div class="wf-stage-icon">&#9679;</div>
+            <div class="wf-stage-label">Intel Ingested</div>
+            <div class="wf-stage-count">{{ total }} detections</div>
+        </div>
+        <div class="wf-connector"></div>
+        <div class="wf-stage wf-stage-active">
+            <div class="wf-stage-icon">&#9679;</div>
+            <div class="wf-stage-label">Sandbox Tested</div>
+            <div class="wf-stage-count" id="sandbox-tested">--</div>
+        </div>
+        <div class="wf-connector"></div>
+        <div class="wf-stage wf-stage-active">
+            <div class="wf-stage-icon">&#9679;</div>
+            <div class="wf-stage-label">Templates Ready</div>
+            <div class="wf-stage-count">3 SIEMs</div>
+        </div>
+    </div>
+</section>
+
+<!-- Detection Browser -->
+<section class="section">
+    <div class="workflow-layout">
+        <!-- Left: Detection list -->
+        <div class="detection-browser">
+            <div class="browser-controls">
+                <input type="text" id="search-input" class="form-input" placeholder="Search detections...">
+                <div class="filter-row">
+                    <select id="filter-category" class="form-select">
+                        <option value="">All Categories</option>
+                        {% for cat in categories %}
+                        <option value="{{ cat }}">{{ cat }} ({{ categories[cat]|length }})</option>
+                        {% endfor %}
+                    </select>
+                    <select id="filter-severity" class="form-select">
+                        <option value="">All Severities</option>
+                        <option value="critical">Critical</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                        <option value="info">Info</option>
+                    </select>
+                </div>
+            </div>
+            <div class="detection-list" id="detection-list">
+                {% for det in detections %}
+                <div class="detection-item" data-module="{{ det.module }}" data-category="{{ det.category }}" data-severity="{{ det.severity }}" onclick="selectDetection(this)">
+                    <div class="det-header">
+                        <span class="det-category cat-{{ det.category }}">{{ det.category }}</span>
+                        <span class="det-severity sev-{{ det.severity }}">{{ det.severity }}</span>
+                    </div>
+                    <div class="det-name">{{ det.name[:80] }}</div>
+                    {% if det.cloudtrail_events %}
+                    <div class="det-events">
+                        {% for ev in det.cloudtrail_events[:3] %}
+                        <span class="event-tag">{{ ev }}</span>
+                        {% endfor %}
+                        {% if det.cloudtrail_events|length > 3 %}
+                        <span class="event-tag event-more">+{{ det.cloudtrail_events|length - 3 }}</span>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Right: Detail panel -->
+        <div class="detection-detail" id="detail-panel">
+            <div class="detail-placeholder">
+                <p>Select a detection to view sandbox results, sample logs, and export SIEM templates.</p>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let sandboxResults = {};
+let allDetections = {{ detections | tojson }};
+
+fetch('/api/sandbox/results')
+    .then(r => r.json())
+    .then(data => {
+        data.forEach(r => sandboxResults[r.module] = r);
+        let passed = data.filter(r => r.status === 'pass').length;
+        document.getElementById('sandbox-tested').textContent = passed + '/' + data.length + ' passed';
+    });
+
+function selectDetection(el) {
+    document.querySelectorAll('.detection-item').forEach(i => i.classList.remove('selected'));
+    el.classList.add('selected');
+    let mod = el.dataset.module;
+    let det = allDetections.find(d => d.module === mod);
+    let sb = sandboxResults[mod] || {};
+    let panel = document.getElementById('detail-panel');
+
+    panel.innerHTML = `
+        <div class="detail-header">
+            <h3>${det.name}</h3>
+            <div class="detail-meta">
+                <span class="det-category cat-${det.category}">${det.category}</span>
+                <span class="det-severity sev-${det.severity}">${det.severity}</span>
+                ${det.source_url ? `<a href="${det.source_url}" target="_blank" class="detail-source">Source</a>` : ''}
+            </div>
+        </div>
+
+        ${det.description ? `<p class="detail-desc">${det.description}</p>` : ''}
+
+        ${det.cloudtrail_events.length ? `
+        <div class="detail-section">
+            <h4>CloudTrail Events</h4>
+            <div class="det-events">
+                ${det.cloudtrail_events.map(e => `<span class="event-tag">${e}</span>`).join('')}
+            </div>
+        </div>` : ''}
+
+        ${det.mitre_ttps.length ? `
+        <div class="detail-section">
+            <h4>MITRE ATT&CK</h4>
+            <div class="det-events">
+                ${det.mitre_ttps.map(t => `<span class="event-tag mitre-tag">${t}</span>`).join('')}
+            </div>
+        </div>` : ''}
+
+        ${sb.events_tested ? `
+        <div class="detail-section">
+            <h4>Sandbox Results</h4>
+            <div class="sandbox-results">
+                <div class="sb-stat">
+                    <span class="sb-val">${sb.events_tested}</span>
+                    <span class="sb-label">Events Tested</span>
+                </div>
+                <div class="sb-stat">
+                    <span class="sb-val sb-tp">${sb.true_positives}</span>
+                    <span class="sb-label">True Positives</span>
+                </div>
+                <div class="sb-stat">
+                    <span class="sb-val sb-fp">${sb.false_positives}</span>
+                    <span class="sb-label">False Positives</span>
+                </div>
+                <div class="sb-stat">
+                    <span class="sb-val">${sb.precision}</span>
+                    <span class="sb-label">Precision</span>
+                </div>
+                <div class="sb-status sb-${sb.status}">${sb.status.toUpperCase()}</div>
+            </div>
+        </div>
+
+        <div class="detail-section">
+            <h4>Sample Matched Log</h4>
+            <pre class="code-block code-sm">${JSON.stringify(sb.sample_log, null, 2)}</pre>
+        </div>` : ''}
+
+        <div class="detail-section">
+            <h4>Export SIEM Template</h4>
+            <div class="siem-buttons">
+                <button class="btn btn-siem btn-splunk" onclick="loadTemplate('${mod}', 'splunk')">Splunk</button>
+                <button class="btn btn-siem btn-sentinel" onclick="loadTemplate('${mod}', 'sentinel')">Sentinel</button>
+                <button class="btn btn-siem btn-elastic" onclick="loadTemplate('${mod}', 'elastic')">Elastic</button>
+            </div>
+            <div id="template-output" class="template-output" style="display:none;">
+                <div class="template-header">
+                    <span id="template-siem-label"></span>
+                    <button class="btn btn-outline btn-sm" onclick="copyTemplate()">Copy</button>
+                    <button class="btn btn-outline btn-sm" onclick="downloadTemplate()">Download</button>
+                </div>
+                <pre class="code-block code-sm" id="template-content"></pre>
+            </div>
+        </div>
+    `;
+}
+
+let currentTemplate = '';
+let currentSiem = '';
+let currentModule = '';
+
+function loadTemplate(mod, siem) {
+    currentModule = mod;
+    currentSiem = siem;
+    fetch(`/api/detections/${mod}/template/${siem}`)
+        .then(r => r.json())
+        .then(data => {
+            currentTemplate = data.template;
+            document.getElementById('template-output').style.display = 'block';
+            document.getElementById('template-siem-label').textContent = siem.charAt(0).toUpperCase() + siem.slice(1) + ' Template';
+            document.getElementById('template-content').textContent = data.template;
+        });
+}
+
+function copyTemplate() {
+    navigator.clipboard.writeText(currentTemplate);
+}
+
+function downloadTemplate() {
+    let ext = {splunk: 'conf', sentinel: 'kql', elastic: 'json'}[currentSiem] || 'txt';
+    let blob = new Blob([currentTemplate], {type: 'text/plain'});
+    let a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${currentModule}.${ext}`;
+    a.click();
+}
+
+// Search and filter
+document.getElementById('search-input').addEventListener('input', filterDetections);
+document.getElementById('filter-category').addEventListener('change', filterDetections);
+document.getElementById('filter-severity').addEventListener('change', filterDetections);
+
+function filterDetections() {
+    let query = document.getElementById('search-input').value.toLowerCase();
+    let cat = document.getElementById('filter-category').value;
+    let sev = document.getElementById('filter-severity').value;
+
+    document.querySelectorAll('.detection-item').forEach(item => {
+        let name = item.querySelector('.det-name').textContent.toLowerCase();
+        let itemCat = item.dataset.category;
+        let itemSev = item.dataset.severity;
+        let show = true;
+        if (query && !name.includes(query) && !itemCat.includes(query)) show = false;
+        if (cat && itemCat !== cat) show = false;
+        if (sev && itemSev !== sev) show = false;
+        item.style.display = show ? '' : 'none';
+    });
+}
+</script>
+{% endblock %}

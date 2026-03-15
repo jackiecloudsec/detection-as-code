@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% set active = "home" %}
+{% block title %}Jackie Wade — Cloud Security Detection Platform{% endblock %}
+
+{% block content %}
+<!-- Hero / Bio -->
+<section class="hero">
+    <div class="hero-content">
+        <div class="hero-text">
+            <h1>Jackie Wade</h1>
+            <p class="hero-subtitle">DevOps & Cloud Security Engineer</p>
+            <p class="hero-bio">
+                Building scalable cloud security solutions with AWS, Terraform, Kubernetes, and Python.
+                Based in Washington DC, currently at Booz Allen Hamilton. Focused on detection engineering,
+                threat intelligence automation, and bringing DevOps practices to security operations.
+            </p>
+            <p class="hero-bio">
+                This platform is an open-source detection-as-code pipeline that scrapes live threat intelligence,
+                auto-generates detection rules, validates them in a sandboxed Kubernetes cluster, and deploys
+                production-ready templates for Splunk, Microsoft Sentinel, and Elastic SIEM.
+            </p>
+            <div class="hero-links">
+                <a href="https://github.com/jackiecloudsec" target="_blank" class="btn btn-primary">GitHub</a>
+                <a href="https://linkedin.com/in/opwade" target="_blank" class="btn btn-outline">LinkedIn</a>
+                <a href="/workflow" class="btn btn-outline">View Pipeline</a>
+            </div>
+        </div>
+        <div class="hero-stats">
+            <div class="stat-card">
+                <span class="stat-number" id="stat-detections">--</span>
+                <span class="stat-label">Active Detections</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-number">4</span>
+                <span class="stat-label">Intel Sources</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-number">3</span>
+                <span class="stat-label">SIEM Targets</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-number" id="stat-categories">--</span>
+                <span class="stat-label">Threat Categories</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- How It Works -->
+<section class="section">
+    <h2 class="section-title">How It Works</h2>
+    <div class="pipeline-visual">
+        <div class="pipeline-step">
+            <div class="step-icon">1</div>
+            <h3>Scrape Intel</h3>
+            <p>Pull from CISA, NVD, RSS feeds (TheHackerNews, AWS Security Blog, Unit42), Reddit, and abuse.ch for the latest threats, CVEs, and IoCs.</p>
+        </div>
+        <div class="pipeline-arrow">&rarr;</div>
+        <div class="pipeline-step">
+            <div class="step-icon">2</div>
+            <h3>Generate Detections</h3>
+            <p>Map threat intel to CloudTrail events. Auto-generate detection modules with LogQL queries, detection logic, severity ratings, and runbooks.</p>
+        </div>
+        <div class="pipeline-arrow">&rarr;</div>
+        <div class="pipeline-step">
+            <div class="step-icon">3</div>
+            <h3>Sandbox Validate</h3>
+            <p>Spin up a Kubernetes cluster with Loki, inject synthetic CloudTrail events, run detections, measure precision. Flag false positives before production.</p>
+        </div>
+        <div class="pipeline-arrow">&rarr;</div>
+        <div class="pipeline-step">
+            <div class="step-icon">4</div>
+            <h3>Deploy Templates</h3>
+            <p>Export production-ready detection templates for Splunk (saved searches), Sentinel (KQL), and Elastic (detection rules). Customize and deploy to your SIEM.</p>
+        </div>
+    </div>
+</section>
+
+<!-- Quick Start -->
+<section class="section section-dark">
+    <h2 class="section-title">Deploy to Your Cluster</h2>
+    <div class="code-block-wrap">
+        <pre class="code-block"><code><span class="code-comment"># Clone the detection-as-code repo</span>
+git clone https://github.com/jackiecloudsec/detection-as-code.git
+cd detection-as-code
+
+<span class="code-comment"># Option 1: Local sandbox (kind + Loki + MinIO)</span>
+./sandbox/setup.sh
+python3 sandbox/inject_cloudtrail.py --count 50
+kubectl logs -n detections -l app=detection-engine -f
+
+<span class="code-comment"># Option 2: Production Helm deploy</span>
+helm upgrade --install detection-engine ./helm \
+  --set loki.url=http://your-loki:3100 \
+  --set alertmanager.url=http://your-alertmanager:9093/api/v1/alerts \
+  --set slack.webhookUrl=https://hooks.slack.com/services/YOUR/WEBHOOK
+
+<span class="code-comment"># Export SIEM templates</span>
+curl https://your-instance/api/detections/brute_force/template/splunk
+curl https://your-instance/api/detections/brute_force/template/sentinel
+curl https://your-instance/api/detections/brute_force/template/elastic</code></pre>
+    </div>
+</section>
+
+<!-- Latest Posts -->
+<section class="section">
+    <div class="section-header">
+        <h2 class="section-title">Latest Posts</h2>
+        <a href="/blog" class="btn btn-outline btn-sm">View All</a>
+    </div>
+    <div class="post-grid">
+        {% for post in posts %}
+        <a href="/blog/{{ post.id }}" class="post-card">
+            <div class="post-meta">
+                <span class="post-date">{{ post.date }}</span>
+                <span class="post-severity severity-{{ post.tags[0] if post.tags else 'default' }}">
+                    {{ post.tags[0] if post.tags else '' }}
+                </span>
+            </div>
+            <h3 class="post-title">{{ post.title }}</h3>
+            <p class="post-summary">{{ post.summary[:200] }}{% if post.summary|length > 200 %}...{% endif %}</p>
+            <div class="post-tags">
+                {% for tag in post.tags[:4] %}
+                <span class="tag">{{ tag }}</span>
+                {% endfor %}
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+fetch('/api/stats')
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('stat-detections').textContent = data.total_detections;
+        document.getElementById('stat-categories').textContent = Object.keys(data.categories).length;
+    })
+    .catch(() => {});
+</script>
+{% endblock %}
